@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <!-- import CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+</head>
+
+<body>
+    <div id="app">
+        <el-container>
+            <el-header>
+                <h3>
+                    Tokyo neighborhood map
+                </h3>
+            </el-header>
+            <el-container>
+                <el-aside width="200px">
+                    <el-collapse v-model="active_sections">
+                        <el-collapse-item title="Layers" name="layers">
+                            <el-tree :data="layers_tree"></el-tree>
+                        </el-collapse-item>
+                        <el-collapse-item title="Tools" name="tools">
+                            <b>Zoom</b>
+                            <el-slider v-model="zoom" :step="1" :marks="marks" :max="24" :min="0">
+                            </el-slider>
+                            <br>
+                            <b>Center</b>
+                            <br>{{center}}
+                        </el-collapse-item>
+                        </el-tree>
+                    </el-collapse>
+                </el-aside>
+                <el-main v-loading="loading" element-loading-text="Fetching data..."
+                    element-loading-spinner="el-icon-loading" element-loading-background="rgba(0, 0, 0, 0.8)">
+                    <vl-map id="olmap" :load-tiles-while-animating="true" :load-tiles-while-interacting="true"
+                        data-projection="EPSG:4326" style="height: 400px">
+                        <vl-view :zoom.sync="zoom" :center.sync="center" :rotation.sync="rotation"></vl-view>
+
+                        <vl-layer-tile id="osm">
+                            <vl-source-osm></vl-source-osm>
+                        </vl-layer-tile>
+                        <vl-feature>
+                            <vl-geom-polygon
+                                :coordinates="[[[139.74308967590332,35.67319515681665],[139.77742195129395,35.67319515681665],[139.77742195129395,35.69850135908622],[139.74308967590332,35.69850135908622],[139.74308967590332,35.67319515681665]]]">
+                            </vl-geom-polygon>
+                        </vl-feature>
+
+                        <vl-feature v-for="feature in search_results">
+                            <vl-geom-polygon   :coordinates="feature.getCoordinates()">
+                            </vl-geom-polygon>
+                        </vl-feature>
+
+                        <vl-layer-vector>
+                            <vl-source-vector :features.sync="features" ident="the-source"></vl-source-vector>
+                            <vl-style-box>
+                                <vl-style-stroke color="green"></vl-style-stroke>
+                                <vl-style-fill color="rgba(255,255,255,0.5)"></vl-style-fill>
+                            </vl-style-box>
+                        </vl-layer-vector>
+
+                        <vl-interaction-draw type="Polygon" source="the-source">
+                            <vl-style-box>
+                                <vl-style-stroke color="blue"></vl-style-stroke>
+                                <vl-style-fill color="rgba(255,255,255,0.5)"></vl-style-fill>
+                            </vl-style-box>
+                        </vl-interaction-draw>
+                        <vl-layer-vector>
+                            <vl-source-vector
+                                url="https://openlayers.org/en/latest/examples/data/geojson/countries.geojson">
+                            </vl-source-vector>
+                        </vl-layer-vector>
+                    </vl-map>
+                </el-main>
+            </el-container>
+            <el-footer>
+                <el-tabs v-model="selected_output">
+                    <el-tab-pane label="Tabular" name="tabular">
+
+                        <el-row>
+                            <el-col :span="6">
+                                <strong>{{data_list.length}} feature(s)</strong>
+                            </el-col>
+                            <!-- <el-col :span="6">
+                                <strong>Landuse: </strong> {{landuse}}
+                            </el-col>
+                            <el-col :span="6">
+                                <strong>Selected area: </strong> {{selected_area}}
+                            </el-col> -->
+                            <el-col :span="6">
+                                <strong>Landuse %: </strong> {{landuse_percentage}}
+                            </el-col>
+                        </el-row>
+                        <el-table :data="data_list" style="width: 100%" max-height="300" @row-click="record_selected">
+                            <el-table-column sortable prop="id" label="Id">
+                                <template slot-scope="scope">
+                                    {{scope.$index}}
+                                </template>
+                            </el-table-column>
+                            <el-table-column sortable prop="id" label="Id"></el-table-column>
+                            <el-table-column sortable prop="name" label="Name"></el-table-column>
+                            <el-table-column sortable prop="building" label="Building"></el-table-column>
+                            <el-table-column sortable prop="source" label="source"></el-table-column>
+                            <el-table-column sortable prop="amenity" label="Amenity"></el-table-column>
+                            <el-table-column sortable prop="tourism" label="Tourism"></el-table-column>
+                        </el-table>
+                    </el-tab-pane>
+                    <el-tab-pane label="Chart" name="chart">
+
+                        <el-row>
+                            <el-col :span="6">
+                                <canvas id="categories_chart" width="400" height="400"></canvas>
+                            </el-col>
+                            <el-col :span="6">
+                                <div class="ct-chart ct-perfect-fourth"></div>
+                            </el-col>
+
+
+
+                        </el-row>
+                    </el-tab-pane>
+                </el-tabs>
+            </el-footer>
+        </el-container>
+        <el-row>
+            <el-col :span="24">
+                <div class="grid-content bg-purple-dark"></div>
+            </el-col>
+        </el-row>
+
+        <!-- 
+        <div style="padding: 20px">
+            Zoom: {{ zoom }}<br>
+            Center: {{ center }}<br>
+            Rotation: {{ rotation }}<br>
+        </div> -->
+    </div>
+</body>
+<!-- import Vue before Element -->
+<script src="https://unpkg.com/vue/dist/vue.js"></script>
+<!-- import JavaScript -->
+<script src="https://unpkg.com/element-ui/lib/index.js"></script>
+<!-- include OpenLayers -->
+<script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v5.3.0/build/ol.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/ol-ext@3.1.17/dist/ol-ext.min.js"></script>
+
+<!-- include UMD VueLayers build -->
+<link rel="stylesheet" href="https://unpkg.com/vuelayers/lib/style.css">
+<script src="https://unpkg.com/vuelayers/lib/index.umd.js"></script>
+
+<!-- axios  -->
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+<!-- turf  -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/0.0.124/turf.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.1/Chart.min.js"></script>
+
+
+<script>
+
+    new Vue({
+        el: '#app',
+        data: function () {
+            return {
+                marks: {
+                    3: 'World',
+                    11: 'City',
+                    20: 'Building',
+                },
+                categories_chart: '',
+                visible: false,
+                loading: false,
+                categories: {},
+                data_list: [],
+                zoom: 14,
+                center: [139.76341140747095, 35.68533791654531 ],
+                rotation: 0,
+                layers_tree: [{ type: 'osm', label: 'Basemap', disabled: true }, { label: "Boundaries" }],
+                selected_output: 'tabular',
+                active_sections: ['layers', 'tools'],
+                features: [],
+                buildings_dataset: [],
+                search_results: [],
+                landuse: 0,
+                selected_area: 0,
+                landuse_percentage: 0,
+            }
+        },
+        mounted() {
+            this.load_dataset();
+
+        },
+
+        methods:
+        {
+            // Select building on map on user click
+            record_selected(e) {
+                let geom = new ol.Feature(new ol.geom.Polygon(e.coordinates));
+                let extent = geom.getGeometry().getExtent();
+
+                // get center of building
+                let deltaX = extent[2] - extent[0];
+                let deltaY = extent[3] - extent[1];
+                let newX = extent[0] + (deltaX / 2);
+                let newY = extent[1] + (deltaY / 2);
+                this.center = [newX, newY];
+                this.zoom = 21;
+
+            },
+            load_dataset() {
+                // preload geojson data used in query for assessment purpose only
+                // in real life, spatial query should be an on-demand request using APIs 
+                let url = "https://gist.githubusercontent.com/shozayen/1411bd6eecc9a36a11e00b652cb6e555/raw/d1f35db6262cacdf7d016dc61d0e2e5a01521d94/tokyo_dataset.geojson";
+                axios.get(url).then(response => {
+                    this.buildings_dataset = new ol.source.Vector({
+                        features: new ol.format.GeoJSON().readFeatures(response.data),
+                    });
+                })
+            },
+            search_by_polygon(feature) {
+                // method used to search features (buildings) using polygon drawn
+                // by the user
+                this.features = [];
+                let geo = new ol.Feature(new ol.geom.Polygon(feature.geometry.coordinates));
+                var extent = geo.getGeometry().getExtent();
+                var geomA = geo.getGeometry();                
+                this.landuse = 0;
+                this.selected_area = geomA.getArea();
+                this.landuse_percentage = 0;
+                this.loading = true;
+                this.search_results = [];
+                let _this = this;
+                this.data_list = [];
+                this.categories = {};
+                let landuse = 0;
+
+                // iterate through the features in the buildings_dataset 
+                // in reference to polyong extent initialy
+                this.buildings_dataset.forEachFeatureInExtent(extent, function (aa) {
+                    // get polygons only
+                    let poly_only = ["Polygon"].includes(aa.getGeometry().getType());
+                    
+                    // check the intersection of  building inside the polyong
+                    // we can use booleanContains instead of INTERSECTS
+                    // to check if the building is completely inside the  polygon
+                    if (_this.polyIntersectsPoly(geomA, aa.getGeometry()) === true && poly_only === true) {
+                        _this.search_results.push(aa.getGeometry());
+                        
+                        // prepare features + tabular data
+                        let building_cat = aa.get('building') == "yes" ? 'Building' : aa.get('building');
+                        let building_area = aa.getGeometry().getArea();
+                        landuse += building_area;
+                        _this.data_list.push({
+                            id: aa.get('@id'),
+                            name: aa.get('name'),
+                            building: building_cat,
+                            source: aa.get('source'),
+                            amenity: aa.get('amenity'),
+                            tourism: aa.get('tourism'),
+                            coordinates: aa.getGeometry().getCoordinates(),
+                            area: building_area
+                        })
+
+                        // get data categorized to be displated on chart
+                        // in a dictionary data structure
+                        if (_this.categories[building_cat] == undefined)
+                            _this.categories[building_cat] = 1;
+                        else
+                            _this.categories[building_cat] = _this.categories[building_cat] + 1;
+                    }
+                });
+                this.landuse = landuse;
+                // get landuse percentage 
+                this.landuse_percentage = Math.round((this.landuse / this.selected_area) * 100);
+                this.loading = false;
+                this.$message({
+                    type: "success", message: `${this.search_results.length
+                        } features found.`
+                });
+
+                // update categories chart
+                this.update_charts();
+            },
+            polyIntersectsPoly(polygeomA, polygeomB) {
+                // this method used turf to perform the spatial query                
+                var geomA = new jsts.io.GeoJSONReader().read(new ol.format.GeoJSON().writeFeatureObject(
+                    new ol.Feature({
+                        geometry: polygeomA
+                    })
+                )
+                ).geometry;
+                var geomB = new jsts.io.GeoJSONReader().read(new ol.format.GeoJSON().writeFeatureObject(
+                    new ol.Feature({
+                        geometry: polygeomB
+                    })
+                )
+                ).geometry;
+                
+                // check intersection between the feature (building) & drawn polygon 
+                // Can use booleanContains to check if building is completely inside 
+                // the drawing area
+                return geomA.intersects(geomB);
+            },
+            update_charts() {
+
+                var canvas = document.getElementById('categories_chart');
+                var ctx = canvas.getContext('2d');
+
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                let categories = Object.keys(this.categories);
+                var myChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: categories,
+                        datasets: [{
+                            label: 'Building categories',
+                            data: Object.values(this.categories),
+
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.2)',
+                                'rgba(54, 162, 235, 0.2)',
+                                'rgba(255, 206, 86, 0.2)',
+                                'rgba(75, 192, 192, 0.2)',
+                                'rgba(153, 102, 255, 0.2)',
+                                'rgba(255, 159, 64, 0.2)'
+                            ],
+
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            yAxes: [{
+                                ticks: {
+                                    beginAtZero: true
+                                }
+                            }]
+                        }
+                    }
+                });
+            }
+        },
+        watch: {
+            features: function (newVal) {
+                if (newVal.length > 0)
+                    this.search_by_polygon(newVal[0]);
+            }
+        }
+    })
+</script>
+
+</html>
